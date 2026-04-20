@@ -1,0 +1,175 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // DEFAULT DENY
+    // ===============================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isValidId(id) { 
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
+    }
+    
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isSignedIn() { return request.auth != null; }
+    
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == "kunalkaruan1997@gmail.com" ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'student') == 'admin'
+      );
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isNotBlocked() {
+      return isSignedIn() && (
+        !exists(/databases/$(database)/documents/users/$(request.auth.uid)) || 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('blocked', false) == false
+      );
+    }
+
+    function isPremium() {
+      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('isPremium', false) == true;
+    }
+
+    function hasUnlocked(contentId) {
+      return isSignedIn() && contentId in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('unlockedContent', []);
+    }
+
+    function canAccessContent(data, id) {
+      return isAdmin() || (
+        isNotBlocked() && 
+        data.get('hidden', false) == false && (
+          data.get('isPremium', false) == false || 
+          isPremium() || 
+          hasUnlocked(id)
+        )
+      );
+    }
+
+    // ===============================================================
+    // VALIDATION HELPERS
+    // ===============================================================
+    
+    function isValidUser(data) {
+      return data.uid is string && 
+             data.email is string && 
+             data.email.size() <= 200 &&
+             data.role in ['student', 'admin'] &&
+             data.keys().hasAll(['uid', 'email', 'role']);
+    }
+
+    function isValidContent(data) {
+      return data.title is string && data.title.size() <= 200 &&
+             (!data.keys().contains('price') || data.price is number);
+    }
+
+    function isValidPaymentRequest(data) {
+      return data.userId == request.auth.uid &&
+             data.amount is number &&
+             data.transactionId is string && data.transactionId.size() <= 256 &&
+             data.screenshotUrl is string && data.screenshotUrl.size() <= 1024 &&
+             data.status == 'pending' &&
+             data.contentType in ['video', 'note', 'mockTest', 'liveClass', 'subscription'];
+    }
+
+    // ===============================================================
+    // Match Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      // Allow unauthenticated lookup by studentId or email for password reset (limited to 1 result)
+      allow list: if !isSignedIn() && request.query.limit <= 1;
+      
+      allow create: if (isOwner(userId) || isAdmin()) && isValidUser(incoming()) && (
+        // Prevent student from making themselves admin or premium or unblocked
+        (isAdmin() || (
+          incoming().role == 'student' && 
+          incoming().get('isPremium', false) == false && 
+          incoming().get('blocked', false) == false
+        ))
+      );
+      
+      allow update: if (isAdmin() || (isOwner(userId) && isNotBlocked())) && (
+        // Allow student to only update specific fields, and NOT role, isPremium, blocked
+        (isAdmin() || (
+          incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'savedNotes', 'watchedVideos', 'fullName', 'dob', 'studentClass', 'school', 'contact', 'profileCompleted'])
+        ))
+      );
+      
+      allow delete: if isAdmin();
+    }
+
+    match /videos/{videoId} {
+      allow get: if canAccessContent(existing(), videoId);
+      allow list: if isAdmin() || (isNotBlocked() && existing().get('hidden', false) == false && existing().get('isPremium', false) == false);
+      allow write: if isAdmin() && isValidContent(incoming());
+    }
+
+    match /notes/{noteId} {
+      allow get: if canAccessContent(existing(), noteId);
+      allow list: if isAdmin() || (isNotBlocked() && existing().get('hidden', false) == false && existing().get('isPremium', false) == false);
+      allow write: if isAdmin() && isValidContent(incoming());
+    }
+
+    match /liveClasses/{classId} {
+      allow get: if canAccessContent(existing(), classId);
+      allow list: if isAdmin() || (isNotBlocked() && existing().get('hidden', false) == false && existing().get('isPremium', false) == false);
+      allow write: if isAdmin() && isValidContent(incoming());
+    }
+
+    match /mockTests/{testId} {
+      allow get: if canAccessContent(existing(), testId);
+      allow list: if isAdmin() || (isNotBlocked() && existing().get('hidden', false) == false && existing().get('isPremium', false) == false);
+      allow write: if isAdmin() && isValidContent(incoming());
+    }
+
+    match /global_messages/{messageId} {
+      allow read: if isNotBlocked() || isAdmin();
+      allow create: if isNotBlocked() && 
+                    incoming().senderId == request.auth.uid &&
+                    (isAdmin() || (get(/databases/$(database)/documents/settings/chat).data.get('enabled', false) == true));
+      allow update: if isNotBlocked() && existing().senderId == request.auth.uid;
+      allow delete: if isAdmin() || (isNotBlocked() && existing().senderId == request.auth.uid);
+    }
+
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /testResults/{resultId} {
+      allow read: if (isNotBlocked() && existing().userId == request.auth.uid) || isAdmin();
+      allow create: if isNotBlocked() && incoming().userId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    match /paymentRequests/{requestId} {
+      allow read: if (isSignedIn() && existing().userId == request.auth.uid) || isAdmin();
+      allow create: if isNotBlocked() && isValidPaymentRequest(incoming()) && incoming().createdAt == request.time;
+      allow update: if isAdmin() && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'rejectionReason', 'updatedAt'])
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn() && (existing().userId == request.auth.uid || existing().userId == 'all' || isAdmin());
+      allow create: if isSignedIn(); 
+      allow update: if isSignedIn() && (existing().userId == request.auth.uid || isAdmin()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['read'])
+      );
+      allow delete: if isAdmin();
+    }
+  }
+}

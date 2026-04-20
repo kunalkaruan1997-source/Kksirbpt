@@ -1,0 +1,268 @@
+{
+  "entities": {
+    "user": {
+      "title": "User Profile",
+      "description": "Student or Admin profile information.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string", "format": "uri" },
+        "role": { "type": "string", "enum": ["student", "admin"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "savedNotes": { "type": "array", "items": { "type": "string" } },
+        "watchedVideos": { "type": "array", "items": { "type": "string" } },
+        "isPremium": { "type": "boolean" },
+        "premiumUntil": { "type": "string", "format": "date-time" },
+        "blocked": { "type": "boolean" },
+        "unlockedContent": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "video": {
+      "title": "Educational Video",
+      "description": "YouTube video metadata.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "youtubeId": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "category": { "type": "string" },
+        "thumbnail": { "type": "string", "format": "uri" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "class": { "type": "string" },
+        "subject": { "type": "string" },
+        "chapter": { "type": "string" },
+        "hidden": { "type": "boolean" },
+        "isPremium": { "type": "boolean" },
+        "price": { "type": "number" },
+        "qrCodeUrl": { "type": "string" }
+      },
+      "required": ["youtubeId", "title", "category"]
+    },
+    "note": {
+      "title": "Study Material",
+      "description": "Notes or PDF links.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "pdfUrl": { "type": "string", "format": "uri" },
+        "subject": { "type": "string" },
+        "chapter": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "hidden": { "type": "boolean" },
+        "isPremium": { "type": "boolean" },
+        "price": { "type": "number" },
+        "qrCodeUrl": { "type": "string" }
+      },
+      "required": ["title", "subject"]
+    },
+    "liveClass": {
+      "title": "Live Session",
+      "description": "Upcoming or past live classes.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "youtubeLiveUrl": { "type": "string", "format": "uri" },
+        "startTime": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["upcoming", "live", "ended", "recorded"] },
+        "hidden": { "type": "boolean" },
+        "isPremium": { "type": "boolean" },
+        "price": { "type": "number" },
+        "qrCodeUrl": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "youtubeLiveUrl", "startTime"]
+    },
+    "chatMessage": {
+      "title": "Chat Message",
+      "description": "Message in a channel or direct chat.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
+        "text": { "type": "string" },
+        "channelId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "attachment": {
+          "type": "object",
+          "properties": {
+            "url": { "type": "string", "format": "uri" },
+            "type": { "type": "string", "enum": ["image", "video", "pdf", "audio", "other"] },
+            "name": { "type": "string" }
+          }
+        }
+      },
+      "required": ["senderId", "text", "channelId"]
+    },
+    "mockTest": {
+      "title": "Mock Test",
+      "description": "A test with multiple choice questions.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "questions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "text": { "type": "string" },
+              "options": { "type": "array", "items": { "type": "string" } },
+              "correctOptionIndex": { "type": "number" }
+            }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "hidden": { "type": "boolean" },
+        "isPremium": { "type": "boolean" },
+        "price": { "type": "number" },
+        "qrCodeUrl": { "type": "string" }
+      },
+      "required": ["title", "questions"]
+    },
+    "testResult": {
+      "title": "Test Result",
+      "description": "User's performance in a mock test.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "testId": { "type": "string" },
+        "testTitle": { "type": "string" },
+        "score": { "type": "number" },
+        "totalQuestions": { "type": "number" },
+        "correctAnswers": { "type": "number" },
+        "wrongAnswers": { "type": "number" },
+        "skippedAnswers": { "type": "number" },
+        "completedAt": { "type": "string", "format": "date-time" },
+        "answers": { "type": "object" }
+      },
+      "required": ["userId", "testId", "score", "completedAt"]
+    },
+    "notification": {
+      "title": "Application Notification",
+      "description": "System or user-specific notifications.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string", "enum": ["upload", "approval", "system", "payment_request"] },
+        "link": { "type": "string" },
+        "image": { "type": "string" },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "title", "message", "type", "read", "createdAt"]
+    },
+    "paymentRequest": {
+      "title": "Payment Request",
+      "description": "Student payment proof for premium access.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "amount": { "type": "number" },
+        "transactionId": { "type": "string" },
+        "screenshotUrl": { "type": "string", "format": "uri" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "contentType": { "type": "string", "enum": ["video", "note", "mockTest", "liveClass", "subscription"] },
+        "contentId": { "type": "string" },
+        "contentTitle": { "type": "string" },
+        "rejectionReason": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "amount", "transactionId", "screenshotUrl", "status", "contentType"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "user",
+      "description": "User profiles."
+    },
+    "/notifications/{notificationId}": {
+      "schema": "notification",
+      "description": "App notifications for users and admins."
+    },
+    "/videos/{videoId}": {
+      "schema": "video",
+      "description": "Educational videos."
+    },
+    "/notes/{noteId}": {
+      "schema": "note",
+      "description": "Study materials and notes."
+    },
+    "/liveClasses/{classId}": {
+      "schema": "liveClass",
+      "description": "Live sessions schedule."
+    },
+    "/global_messages/{messageId}": {
+      "schema": "chatMessage",
+      "description": "Global community chat messages."
+    },
+    "/mockTests/{testId}": {
+      "schema": "mockTest",
+      "description": "Mock tests available for students."
+    },
+    "/testResults/{resultId}": {
+      "schema": "testResult",
+      "description": "Student test results."
+    },
+    "/paymentRequests/{requestId}": {
+      "schema": "paymentRequest",
+      "description": "Student payment proof submissions."
+    },
+    "/settings/contact": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "whatsapp": { "type": "string" },
+          "instagram": { "type": "string" },
+          "telegram": { "type": "string" },
+          "email": { "type": "string", "format": "email" },
+          "appName": { "type": "string" },
+          "appIcon": { "type": "string", "format": "uri" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "description": "App identity and contact settings."
+    },
+    "/settings/monetization": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "adsEnabled": { "type": "boolean" },
+          "adSenseClientId": { "type": "string" },
+          "adMobAppId": { "type": "string" },
+          "paymentLink": { "type": "string", "format": "uri" },
+          "premiumPrice": { "type": "number" },
+          "premiumBenefits": { "type": "array", "items": { "type": "string" } },
+          "bankDetails": { "type": "object" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "description": "Monetization and payment settings."
+    },
+    "/settings/chat": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "enabled": { "type": "boolean" }
+        }
+      },
+      "description": "Global chat settings."
+    }
+  }
+}

@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KK Sir bpt - Modern Learning Platform</title>
+    <link rel="icon" id="favicon" href="/favicon.ico" />
+    <link rel="icon" sizes="192x192" href="/icon-192.png">
+    <link rel="icon" sizes="512x512" href="/icon-512.png">
+    <link rel="manifest" id="manifest-link" href="/manifest.json" crossorigin="anonymous" />
+    <meta name="theme-color" content="#2563eb" />
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="KK Sir bpt">
+    <meta name="mobile-web-app-capable" content="yes">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="apple-touch-icon" sizes="152x152" href="/apple-touch-icon.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="apple-touch-icon" sizes="167x167" href="/apple-touch-icon.png">
+    <script>
+      // Dynamically update app icon and title from Firestore settings
+      async function updateAppIdentity() {
+        console.log('PWA: Starting identity update...');
+        try {
+          const timestamp = Date.now();
+          const response = await fetch('/api/app-settings?t=' + timestamp);
+          const settings = await response.json();
+          console.log('PWA: Fetched settings:', settings);
+          
+          if (settings.appName) {
+            document.title = settings.appName;
+            
+            // Update apple title
+            const appleTitle = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+            if (appleTitle) appleTitle.content = settings.appName;
+            
+            // Force reload manifest/icons if they changed (optional, but helps with PWA update)
+            console.log('PWA: App name updated to:', settings.appName);
+          }
+        } catch (e) {
+          console.error('PWA: Failed to update app identity:', e);
+        }
+      }
+      updateAppIdentity();
+    </script>
+    <script>
+      // Global PWA Install Handler
+      window.deferredPrompt = null;
+      window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        window.deferredPrompt = e;
+        // Dispatch custom event to notify React
+        window.dispatchEvent(new CustomEvent('pwa-prompt-available'));
+      });
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then(registration => {
+              console.log('SW registered: ', registration);
+            })
+            .catch(registrationError => {
+              console.log('SW registration failed: ', registrationError);
+            });
+        });
+      }
+    </script>
+  </body>
+</html>
