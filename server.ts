@@ -12,179 +12,226 @@ dotenv.config();
 const firebaseConfigPath = path.join(process.cwd(), "firebase-applet-config.json");
 const firebaseConfig = JSON.parse(fs.readFileSync(firebaseConfigPath, "utf8"));
 
+// CRITICAL: Force the project ID into the environment to prevent gRPC from picking up the container project
+process.env.GOOGLE_CLOUD_PROJECT = firebaseConfig.projectId;
+process.env.GCP_PROJECT = firebaseConfig.projectId;
+
+console.log("CONFIG: Project ID from file:", firebaseConfig.projectId);
+console.log("CONFIG: Database ID from file:", firebaseConfig.firestoreDatabaseId);
+
 // Initialize Firebase Admin
 let adminApp: admin.app.App;
-try {
-  if (!admin.apps.length) {
-    // We MUST use the projectId from our config because the server's default 
-    // project might not have Firestore enabled or might be the wrong project.
-    adminApp = admin.initializeApp({
-      projectId: firebaseConfig.projectId
-    });
-    console.log("Firebase Admin initialized with explicit Project ID from config:", firebaseConfig.projectId);
-  } else {
-    adminApp = admin.app();
-    console.log("Firebase Admin already initialized. Project ID:", adminApp.options.projectId);
+let db: admin.firestore.Firestore;
+let useDefaultDb = false;
+
+const initDb = () => {
+  try {
+    if (!admin.apps.length) {
+      adminApp = admin.initializeApp({
+        projectId: firebaseConfig.projectId
+      });
+    } else {
+      adminApp = admin.app();
+    }
+    
+    const dbId = firebaseConfig.firestoreDatabaseId;
+    if (dbId && dbId !== "" && dbId !== "(default)" && !useDefaultDb) {
+      db = getFirestore(adminApp, dbId);
+    } else {
+      db = getFirestore(adminApp);
+    }
+    console.log(`Firestore initialized for project: ${firebaseConfig.projectId} db: ${useDefaultDb ? "(default-fallback)" : (firebaseConfig.firestoreDatabaseId || "(default)")}`);
+  } catch (error: any) {
+    console.error("Firebase Init Error:", error.message);
+    useDefaultDb = true;
+    if (!admin.apps.length) adminApp = admin.initializeApp();
+    else adminApp = admin.app();
+    db = getFirestore(adminApp);
   }
-} catch (error) {
-  console.error("Error initializing Firebase Admin:", error);
-  // Last resort fallback
-  adminApp = admin.initializeApp();
+};
+
+initDb();
+
+// Centralized DB helper with automatic fallback
+async function safeGetDoc(collectionName: string, docId: string) {
+  try {
+    return await db.collection(collectionName).doc(docId).get();
+  } catch (error: any) {
+    const isRetryable = error.message.includes("PERMISSION_DENIED") || 
+                        error.message.includes("NOT_FOUND") || 
+                        error.message.includes("UNAVAILABLE") ||
+                        error.message.includes("5 NOT_FOUND") ||
+                        error.message.includes("7 PERMISSION_DENIED");
+    
+    // If it's a retryable error on a named database, try the default one and SWITCH to it
+    if (isRetryable && !useDefaultDb && firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== "(default)") {
+      try {
+        console.warn(`Persistent error on ${firebaseConfig.firestoreDatabaseId}: ${error.message}. Switching permanently to (default)...`);
+        useDefaultDb = true;
+        db = getFirestore(adminApp);
+        return await db.collection(collectionName).doc(docId).get();
+      } catch (fallbackError: any) {
+         console.error("Fallback also failed:", fallbackError.message);
+         // If it's just "NOT FOUND" (5), it might be that the document doesn't exist, which is NOT an error for safeGetDoc callers
+         if (fallbackError.message.includes("5 NOT_FOUND") || fallbackError.message.includes("NOT_FOUND")) {
+           return { exists: false } as any;
+         }
+         throw fallbackError;
+      }
+    }
+    
+    if (error.message.includes("5 NOT_FOUND") || error.message.includes("NOT_FOUND")) {
+      return { exists: false } as any;
+    }
+    throw error;
+  }
 }
 
-// Initialize Firestore with the named database from config
-const databaseId = firebaseConfig.firestoreDatabaseId || "(default)";
-const db = getFirestore(adminApp, databaseId);
-console.log("Firestore Admin initialized for project:", adminApp.options.projectId, "database:", databaseId);
+// Seed database with professional defaults if empty
+async function seedDatabase() {
+  const performSeed = async (targetDb: admin.firestore.Firestore, dbName: string) => {
+    try {
+      console.log(`Checking seed for database: ${dbName}`);
+      const contactRef = targetDb.collection("settings").doc("contact");
+      
+      // Use a try-catch for the specific get call to handle "NOT_FOUND" as a signal to seed
+      let contactSnap;
+      try {
+        contactSnap = await contactRef.get();
+      } catch (e: any) {
+        if (e.message.includes("NOT_FOUND") || e.message.includes("5 NOT_FOUND")) {
+          console.log(`Contact settings not found in ${dbName}, proceeding to seed...`);
+          contactSnap = { exists: false };
+        } else {
+          throw e;
+        }
+      }
+      
+      if (!contactSnap || !contactSnap.exists) {
+        console.log(`Seeding defaults in ${dbName}...`);
+        await contactRef.set({
+          appName: "KK Sir BPT",
+          appIcon: "https://images.unsplash.com/photo-1546410531-bb4caa6b424d?w=512&h=512&fit=crop&q=80&fm=png",
+          description: "Access live sessions, recorded educational videos, comprehensive study materials, and rigorous mock tests for academic excellence with KK Sir BPT.",
+          email: "support@kksirbpt.com",
+          whatsapp: "911234567890",
+          telegram: "kksir_official",
+          instagram: "kksir_official",
+          updatedAt: new Date().toISOString()
+        });
+
+        await targetDb.collection("settings").doc("monetization").set({
+          adsEnabled: false,
+          premiumPrice: 499,
+          premiumBenefits: [
+            "Ad-free Experience",
+            "Exclusive Premium Videos",
+            "Downloadable PDF Notes",
+            "Priority Doubt Solving",
+            "Full Length Mock Tests"
+          ],
+          bankDetails: {
+            upiId: "kksir@upi",
+            bankName: "Example Bank",
+            accountHolder: "KK Sir Learning",
+            accountNumber: "1234567890",
+            ifscCode: "EXMP0001234"
+          }
+        });
+      }
+      return true;
+    } catch (e: any) {
+      console.error(`Seed attempt failed for ${dbName}:`, e.message);
+      return false;
+    }
+  };
+
+  const dbId = !useDefaultDb && firebaseConfig.firestoreDatabaseId ? firebaseConfig.firestoreDatabaseId : "(default)";
+  const success = await performSeed(db, dbId);
+  
+  if (!success && !useDefaultDb && firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== "(default)") {
+    console.warn("Retrying seed on (default) database due to named database failure...");
+    useDefaultDb = true;
+    db = getFirestore(adminApp);
+    await performSeed(db, "(default)");
+  }
+  
+  console.log("Seed check completed.");
+}
 
 async function startServer() {
+  await seedDatabase();
   const app = express();
   const PORT = 3000;
 
   app.use(express.json());
 
-  // Dynamic manifest.json
-  app.get("/manifest.json", async (req, res) => {
-    res.type("application/manifest+json");
-    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    try {
-      let contactSnap;
-      try {
-        contactSnap = await db.collection("settings").doc("contact").get();
-      } catch (dbError) {
-        const defaultDb = getFirestore(adminApp, "(default)");
-        contactSnap = await defaultDb.collection("settings").doc("contact").get();
-      }
-      const contactData = contactSnap.exists ? contactSnap.data() : {};
-      
-      const appName = contactData?.appName || "KK Sir bpt";
-      const shortName = (contactData?.appName || "KK Sir bpt").substring(0, 12);
-      
-      // Use a high-quality default icon if none provided
-      let appIcon = contactData?.appIcon;
-      if (!appIcon || appIcon.trim() === "") {
-        appIcon = "https://img.icons8.com/fluency/512/000000/education.png";
-      }
-      
-      // Try to determine icon type
-      let iconType = "image/png";
-      if (appIcon.startsWith("data:image/")) {
-        iconType = appIcon.split(";")[0].split(":")[1];
-      } else if (appIcon.toLowerCase().endsWith(".jpg") || appIcon.toLowerCase().endsWith(".jpeg")) {
-        iconType = "image/jpeg";
-      } else if (appIcon.toLowerCase().endsWith(".svg")) {
-        iconType = "image/svg+xml";
-      } else if (appIcon.toLowerCase().endsWith(".webp")) {
-        iconType = "image/webp";
-      }
-
-      // Standard PWA icon sizes
-      const sizes = ["144x144", "152x152", "180x180", "192x192", "512x512"];
-      const icons = [];
-      
-      // If the icon is a base64 string, it's better to point to our internal routes 
-      // instead of putting massive strings in the manifest.json
-      const iconUrl = appIcon.startsWith("data:image/") ? "/icon-512.png" : appIcon;
-
-      sizes.forEach(size => {
-        icons.push({
-          src: iconUrl,
-          sizes: size,
-          type: iconType,
-          purpose: "any"
-        });
-        icons.push({
-          src: iconUrl,
-          sizes: size,
-          type: iconType,
-          purpose: "maskable"
-        });
-      });
-
-      const manifest = {
-        id: "/",
-        name: appName,
-        short_name: shortName,
-        description: `Official learning app for ${appName}.`,
-        start_url: "/",
-        scope: "/",
-        display: "standalone",
-        background_color: "#ffffff",
-        theme_color: "#2563eb",
-        orientation: "portrait",
-        categories: ["education"],
-        icons: icons
-      };
-
-      console.log(`Serving manifest for: ${appName}`);
-      res.send(JSON.stringify(manifest));
-    } catch (error) {
-      console.error("Error serving manifest:", error);
-      res.sendFile(path.join(process.cwd(), "public", "manifest.json"));
-    }
-  });
-
   // App settings endpoint for dynamic identity
   app.get("/api/app-settings", async (req, res) => {
-    console.log("Fetching app settings...");
-    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     try {
-      let contactSnap;
-      try {
-        contactSnap = await db.collection("settings").doc("contact").get();
-      } catch (dbError: any) {
-        console.warn(`Primary database access failed: ${dbError.message}. Trying (default) database...`);
-        const defaultDb = getFirestore(adminApp, "(default)");
-        contactSnap = await defaultDb.collection("settings").doc("contact").get();
-      }
-      
-      const contactData = contactSnap.exists ? contactSnap.data() : {};
-      console.log("Settings fetched successfully:", contactData?.appName);
+      const contactSnap = await safeGetDoc("settings", "contact");
+      const contactData = contactSnap?.exists ? contactSnap.data() : {};
       res.json({
-        appName: contactData?.appName || "KK Sir bpt",
-        appIcon: contactData?.appIcon || "https://img.icons8.com/fluency/512/000000/education.png"
+        appName: contactData?.appName || "KK Sir BPT",
+        appIcon: contactData?.appIcon || "https://images.unsplash.com/photo-1546410531-bb4caa6b424d?w=512&h=512&fit=crop&q=80&fm=png"
       });
     } catch (error: any) {
-      console.error("Error fetching app settings:", error);
-      res.status(500).json({ error: "Failed to fetch settings", details: error.message });
+      res.status(500).json({ error: "Failed to fetch settings" });
     }
   });
 
-  // Dedicated routes for common icon paths to help PWA reliability
-  const serveAppIcon = async (req: express.Request, res: express.Response) => {
+  // Dynamic manifest.json for PWA
+  app.get("/manifest.json", async (req, res) => {
+    let settings = { 
+      appName: "KK Sir BPT", 
+      appIcon: "https://images.unsplash.com/photo-1546410531-bb4caa6b424d?w=512&h=512&fit=crop&q=80&fm=png" 
+    };
+    
     try {
-      let contactSnap;
-      try {
-        contactSnap = await db.collection("settings").doc("contact").get();
-      } catch (e) {
-        const defaultDb = getFirestore(adminApp, "(default)");
-        contactSnap = await defaultDb.collection("settings").doc("contact").get();
+      const contactSnap = await safeGetDoc("settings", "contact");
+      if (contactSnap.exists) {
+        const data = contactSnap.data();
+        settings.appName = data?.appName || settings.appName;
+        settings.appIcon = data?.appIcon || settings.appIcon;
       }
-      const contactData = contactSnap.exists ? contactSnap.data() : {};
-      const appIcon = contactData?.appIcon || "https://img.icons8.com/fluency/512/000000/education.png";
-      
-      if (appIcon.startsWith("data:image/")) {
-        const parts = appIcon.split(",");
-        const info = parts[0].split(";");
-        const contentType = info[0].split(":")[1];
-        const buffer = Buffer.from(parts[1], "base64");
-        res.type(contentType);
-        res.send(buffer);
-      } else {
-        res.redirect(appIcon);
-      }
-    } catch (error) {
-      res.redirect("https://img.icons8.com/fluency/512/000000/education.png");
+    } catch (e) {
+      console.error("Manifest settings fetch error:", e);
     }
-  };
 
-  app.get("/favicon.ico", serveAppIcon);
-  app.get("/apple-touch-icon.png", serveAppIcon);
-  app.get("/apple-touch-icon-precomposed.png", serveAppIcon);
-  app.get("/icon-192.png", serveAppIcon);
-  app.get("/icon-512.png", serveAppIcon);
+    const manifest = {
+      name: settings.appName,
+      short_name: settings.appName,
+      start_url: "/",
+      display: "standalone",
+      background_color: "#ffffff",
+      theme_color: "#00215E",
+      icons: [
+        {
+          src: `${settings.appIcon}${settings.appIcon.includes("?") ? "&" : "?"}v=${Date.now()}&w=192&h=192&fit=crop&q=80&fm=png`,
+          sizes: "192x192",
+          type: "image/png",
+          purpose: "any maskable"
+        },
+        {
+          src: `${settings.appIcon}${settings.appIcon.includes("?") ? "&" : "?"}v=${Date.now()}&w=512&h=512&fit=crop&q=80&fm=png`,
+          sizes: "512x512",
+          type: "image/png",
+          purpose: "any maskable"
+        }
+      ]
+    };
+    res.setHeader("Content-Type", "application/manifest+json");
+    res.send(JSON.stringify(manifest));
+  });
 
+  // Service Worker
+  app.get("/sw.js", (req, res) => {
+    res.setHeader("Content-Type", "application/javascript");
+    res.setHeader("Service-Worker-Allowed", "/");
+    res.sendFile(path.join(process.cwd(), "public", "sw.js"));
+  });
+ 
   // WhatsApp Webhook Verification (GET)
   app.get("/api/whatsapp/webhook", (req, res) => {
     const mode = req.query["hub.mode"];

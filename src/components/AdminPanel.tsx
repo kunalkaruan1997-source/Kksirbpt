@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { collection, addDoc, getDocs, deleteDoc, doc, query, orderBy, updateDoc, where, getDoc, setDoc, Timestamp } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType, serverTimestamp } from '../lib/firebase';
 import { initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { Video, Note, LiveClass, UserProfile, MockTest, Question, ContactSettings, PaymentRequest } from '../types';
-import { Plus, Video as VideoIcon, FileText, Radio, Check, AlertCircle, Trash2, ExternalLink, Settings, Users, Mail, Phone, GraduationCap, School, Calendar, MapPin, Loader2, ClipboardList, X, Eye, EyeOff, Pencil, Instagram, MessageCircle, Send as TelegramIcon, DollarSign, ShieldCheck, UserPlus, Unlock, LayoutDashboard, Download, Bell } from 'lucide-react';
+import { Plus, Video as VideoIcon, FileText, Radio, Check, AlertCircle, Trash2, ExternalLink, Settings, Users, Mail, Phone, GraduationCap, School, Calendar, MapPin, Loader2, ClipboardList, X, Eye, EyeOff, Pencil, Instagram, MessageCircle, Send as TelegramIcon, DollarSign, ShieldCheck, UserPlus, Unlock, LayoutDashboard, Download, Bell, ArrowLeft } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import FileUpload from './FileUpload';
@@ -15,6 +16,7 @@ import { sendNotification } from '../lib/firebase';
 import { useAppSettings } from '../hooks/useAppSettings';
 
 export default function AdminPanel() {
+  const navigate = useNavigate();
   const { settings } = useAppSettings();
   const [activeTab, setActiveTab] = useState<'dashboard' | 'video' | 'note' | 'live' | 'students' | 'mockTest' | 'contact' | 'monetization' | 'approvals'>('dashboard');
   const [loading, setLoading] = useState(false);
@@ -40,32 +42,15 @@ export default function AdminPanel() {
   const [selectedStudentForUnlocks, setSelectedStudentForUnlocks] = useState<UserProfile | null>(null);
   const [allContent, setAllContent] = useState<{ id: string, title: string, type: string }[]>([]);
   const [showCreateStudent, setShowCreateStudent] = useState(false);
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
 
   useEffect(() => {
-    const handlePromptAvailable = () => {
-      setDeferredPrompt((window as any).deferredPrompt);
-    };
-
-    window.addEventListener('pwa-prompt-available', handlePromptAvailable);
-    
-    if ((window as any).deferredPrompt) {
-      setDeferredPrompt((window as any).deferredPrompt);
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get('tab');
+    if (tab && ['dashboard', 'video', 'note', 'live', 'students', 'mockTest', 'contact', 'monetization', 'approvals'].includes(tab)) {
+      setActiveTab(tab as any);
     }
-
-    return () => {
-      window.removeEventListener('pwa-prompt-available', handlePromptAvailable);
-    };
   }, []);
 
-  const handleInstallClick = async () => {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === 'accepted') {
-      setDeferredPrompt(null);
-    }
-  };
   const [newStudentForm, setNewStudentForm] = useState({
     email: '',
     password: '',
@@ -76,7 +61,11 @@ export default function AdminPanel() {
 
   // Form States
   const [videoForm, setVideoForm] = useState({ 
+    title: '',
     youtubeId: '', 
+    videoUrl: '',
+    videoType: 'youtube' as 'youtube' | 'file',
+    thumbnail: '',
     class: '',
     subject: '',
     chapter: '',
@@ -153,9 +142,27 @@ export default function AdminPanel() {
   }, [activeTab]);
 
   const extractYoutubeId = (url: string) => {
-    const regExp = /^.*((youtu.be\/)|(v\/)|(\/u\/\w\/)|(embed\/)|(watch\?))\??v?=?([^#&?]*).*/;
+    if (!url) return '';
+    // If it's already an 11-char ID
+    if (url.length === 11 && !url.includes('/') && !url.includes('?')) return url;
+    
+    const regExp = /^.*((youtu.be\/)|(v\/)|(\/u\/\w\/)|(embed\/)|(watch\?)|(shorts\/))\??v?=?([^#&?]*).*/;
     const match = url.match(regExp);
-    return (match && match[7].length === 11) ? match[7] : url;
+    if (match && match[8] && match[8].length === 11) return match[8];
+    
+    // Fallback URL parsing
+    try {
+      const urlObj = new URL(url.includes('://') ? url : `https://${url}`);
+      let id = urlObj.searchParams.get('v');
+      if (id && id.length === 11) return id;
+      
+      const pathParts = urlObj.pathname.split('/');
+      // Handle /shorts/ID or /embed/ID or youtu.be/ID
+      id = pathParts[pathParts.length - 1];
+      if (id && id.length === 11) return id;
+    } catch (e) {}
+    
+    return url;
   };
 
   const fetchContent = async () => {
@@ -221,7 +228,11 @@ export default function AdminPanel() {
     setEditingQuestionIndex(null);
     if (activeTab === 'video') {
       setVideoForm({ 
-        youtubeId: item.youtubeId, 
+        title: item.title || '',
+        youtubeId: item.youtubeId || '', 
+        videoUrl: item.videoUrl || '',
+        videoType: item.videoUrl ? 'file' : 'youtube',
+        thumbnail: item.thumbnail || '',
         class: item.class || '',
         subject: item.subject || '',
         chapter: item.chapter || '',
@@ -520,8 +531,13 @@ export default function AdminPanel() {
   };
 
   const resetForms = () => {
+    setEditingId(null);
     setVideoForm({ 
+      title: '',
       youtubeId: '', 
+      videoUrl: '',
+      videoType: 'youtube',
+      thumbnail: '',
       class: '',
       subject: '',
       chapter: '',
@@ -597,46 +613,36 @@ export default function AdminPanel() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
+    
     setLoading(true);
     setError('');
     setSuccess(false);
 
-    if (activeTab === 'contact') {
-      try {
+    let collectionName = '';
+    try {
+      if (activeTab === 'contact') {
         await setDoc(doc(db, 'settings', 'contact'), {
           ...contactForm,
           updatedAt: serverTimestamp()
         });
         toast.success('App & Contact settings updated successfully');
         setSuccess(true);
-      } catch (err: any) {
-        handleFirestoreError(err, OperationType.UPDATE, 'settings/contact');
-        setError(err.message);
-      } finally {
         setLoading(false);
+        return;
       }
-      return;
-    }
 
-    if (activeTab === 'monetization') {
-      try {
+      if (activeTab === 'monetization') {
         await setDoc(doc(db, 'settings', 'monetization'), {
           ...monetizationForm,
           updatedAt: serverTimestamp()
         });
         toast.success('Monetization settings updated successfully');
         setSuccess(true);
-      } catch (err: any) {
-        handleFirestoreError(err, OperationType.UPDATE, 'settings/monetization');
-        setError(err.message);
-      } finally {
         setLoading(false);
+        return;
       }
-      return;
-    }
 
-    let collectionName = '';
-    try {
       let data: any = {};
 
       if (activeTab === 'mockTest' && currentQuestion.text?.trim()) {
@@ -647,29 +653,92 @@ export default function AdminPanel() {
 
       if (activeTab === 'video') {
         collectionName = 'videos';
-        const videoId = extractYoutubeId(videoForm.youtubeId);
-        data = {
-          ...videoForm,
-          youtubeId: videoId,
-          thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
-          createdAt: serverTimestamp()
-        };
+        
+        if (videoForm.videoType === 'youtube') {
+          const videoId = extractYoutubeId(videoForm.youtubeId);
+          if (!videoId || videoId.length < 5) {
+            toast.error('Invalid YouTube ID or URL. Please provide a valid ID (11 chars) or a full link.');
+            setLoading(false);
+            return;
+          }
+          
+          if (!videoForm.title.trim()) {
+            toast.error('Please provide a video title');
+            setLoading(false);
+            return;
+          }
+
+          data = {
+            ...videoForm,
+            title: videoForm.title.trim(),
+            youtubeId: videoId,
+            videoUrl: '', // Clear video URL if using YouTube
+            thumbnail: videoForm.thumbnail || `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+            createdAt: serverTimestamp()
+          };
+        } else {
+          if (!videoForm.videoUrl) {
+            toast.error('Please upload a video file first');
+            setLoading(false);
+            return;
+          }
+          if (!videoForm.title.trim()) {
+            toast.error('Please provide a video title');
+            setLoading(false);
+            return;
+          }
+
+          data = {
+            ...videoForm,
+            title: videoForm.title.trim(),
+            youtubeId: '', // Clear YouTube ID if using file
+            videoUrl: videoForm.videoUrl,
+            thumbnail: videoForm.thumbnail || 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800&auto=format&fit=crop', // Default thumbnail if none provided
+            createdAt: serverTimestamp()
+          };
+        }
+        
+        // Clean up internal state fields before saving to Firestore
+        delete data.videoType;
+        
       } else if (activeTab === 'note') {
         collectionName = 'notes';
-        data = { ...noteForm, createdAt: serverTimestamp() };
+        if (!noteForm.title.trim()) {
+          toast.error('Please provide a title');
+          setLoading(false);
+          return;
+        }
+        data = { ...noteForm, title: noteForm.title.trim(), createdAt: serverTimestamp() };
       } else if (activeTab === 'live') {
         collectionName = 'liveClasses';
-        data = { ...liveForm, createdAt: serverTimestamp() };
+        if (!liveForm.title.trim()) {
+          toast.error('Please provide a title');
+          setLoading(false);
+          return;
+        }
+        data = { ...liveForm, title: liveForm.title.trim(), createdAt: serverTimestamp() };
       } else if (activeTab === 'mockTest') {
         collectionName = 'mockTests';
         if (!mockTestForm.title.trim()) {
-          throw new Error('Please fill the test title');
+          toast.error('Please fill the test title');
+          setLoading(false);
+          return;
         }
         if (mockTestForm.questions.length === 0) {
-          throw new Error('Please add at least one question to the test');
+          toast.error('Please add at least one question to the test');
+          setLoading(false);
+          return;
         }
-        data = { ...mockTestForm, createdAt: serverTimestamp() };
+        data = { ...mockTestForm, title: mockTestForm.title.trim(), createdAt: serverTimestamp() };
       }
+
+      if (!collectionName) {
+        toast.error('System Error: No collection target. Please refresh.');
+        setLoading(false);
+        return;
+      }
+
+      console.log(`Saving to ${collectionName}:`, data);
 
       if (editingId) {
         const { createdAt, ...updateData } = data;
@@ -680,21 +749,27 @@ export default function AdminPanel() {
         toast.success('Content added successfully');
 
         // Send notification to all students
-        await sendNotification({
-          userId: 'all',
-          title: `New ${activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} Added`,
-          message: `Check out the new ${activeTab === 'mockTest' ? 'Mock Test' : activeTab}: "${data.title || data.id}"`,
-          type: 'upload',
-          link: activeTab === 'video' ? '/videos' : activeTab === 'note' ? '/notes' : activeTab === 'live' ? '/live' : '/mock-tests',
-          image: activeTab === 'video' ? data.thumbnail : undefined
-        });
+        try {
+          await sendNotification({
+            userId: 'all',
+            title: `New ${activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} Added`,
+            message: `Check out the new ${activeTab === 'mockTest' ? 'Mock Test' : (activeTab === 'video' ? 'Video' : activeTab === 'note' ? 'Study Material' : 'Class')}: "${data.title || docRef.id}"`,
+            type: 'upload',
+            link: activeTab === 'video' ? '/videos' : activeTab === 'note' ? '/notes' : activeTab === 'live' ? '/live' : '/mock-tests',
+            image: activeTab === 'video' ? data.thumbnail : undefined
+          });
+        } catch (notifErr) {
+          console.error('Notification failed but content was saved:', notifErr);
+        }
       }
       
       resetForms();
       fetchContent();
     } catch (err: any) {
+      console.error('Submit Error:', err);
       handleFirestoreError(err, editingId ? OperationType.UPDATE : OperationType.CREATE, editingId ? `${collectionName}/${editingId}` : collectionName);
       setError(err.message);
+      toast.error(`Save failed: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -705,14 +780,20 @@ export default function AdminPanel() {
       {/* Sidebar Navigation */}
       <aside className="w-full md:w-64 space-y-2">
         <div className="mb-8 px-4">
-          <button 
-            onClick={() => window.location.href = '/'}
-            className="mb-4 flex items-center gap-2 text-xs font-bold text-blue-600 hover:text-blue-700 transition-colors"
-          >
-            ← Back to App
-          </button>
-          <h1 className="text-2xl font-bold text-neutral-900 dark:text-white">Admin Panel</h1>
-          <p className="text-xs text-neutral-500 font-medium uppercase tracking-widest mt-1">Control Center</p>
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => navigate(-1)}
+              className="p-2 transition-colors hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl"
+              title="Go Back"
+              id="admin-back-button"
+            >
+              <ArrowLeft className="w-5 h-5 text-neutral-600 dark:text-neutral-400" />
+            </button>
+            <div>
+              <h1 className="text-2xl font-bold text-neutral-900 dark:text-white">Admin Panel</h1>
+              <p className="text-xs text-neutral-500 font-medium uppercase tracking-widest mt-1">Control Center</p>
+            </div>
+          </div>
         </div>
 
         <div className="px-4 mb-6">
@@ -724,16 +805,16 @@ export default function AdminPanel() {
               ADD NEW CONTENT
             </button>
             <div className="absolute top-full left-0 w-full mt-2 bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 p-2 overflow-hidden">
-              <button onClick={() => setActiveTab('video')} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800 hover:text-blue-600 transition-colors">
+              <button onClick={() => { setActiveTab('video'); resetForms(); setVideoForm(prev => ({ ...prev, videoType: 'youtube' })); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800 hover:text-blue-600 transition-colors">
                 <VideoIcon className="w-4 h-4" /> YouTube Video
               </button>
-              <button onClick={() => setActiveTab('note')} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800 hover:text-green-600 transition-colors">
+              <button onClick={() => { setActiveTab('note'); resetForms(); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800 hover:text-green-600 transition-colors">
                 <FileText className="w-4 h-4" /> Study Notes
               </button>
-              <button onClick={() => setActiveTab('live')} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800 hover:text-red-600 transition-colors">
+              <button onClick={() => { setActiveTab('live'); resetForms(); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800 hover:text-red-600 transition-colors">
                 <Radio className="w-4 h-4" /> Live Session
               </button>
-              <button onClick={() => setActiveTab('mockTest')} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800 hover:text-amber-600 transition-colors">
+              <button onClick={() => { setActiveTab('mockTest'); resetForms(); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800 hover:text-amber-600 transition-colors">
                 <ClipboardList className="w-4 h-4" /> Mock Test
               </button>
               <div className="h-px bg-neutral-100 dark:bg-neutral-800 my-1" />
@@ -1409,18 +1490,74 @@ export default function AdminPanel() {
             <form onSubmit={handleSubmit} className="space-y-6">
               {activeTab === 'video' && (
                 <>
+                  <div className="bg-neutral-100 dark:bg-neutral-800 p-1 rounded-xl w-fit flex gap-1 mb-6">
+                    <button
+                      type="button"
+                      onClick={() => setVideoForm({ ...videoForm, videoType: 'youtube' })}
+                      className={cn(
+                        "px-4 py-2 rounded-lg text-xs font-bold transition-all",
+                        videoForm.videoType === 'youtube' 
+                          ? "bg-white dark:bg-neutral-700 shadow-sm text-blue-600" 
+                          : "text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300"
+                      )}
+                    >
+                      YouTube Link
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setVideoForm({ ...videoForm, videoType: 'file' })}
+                      className={cn(
+                        "px-4 py-2 rounded-lg text-xs font-bold transition-all",
+                        videoForm.videoType === 'file' 
+                          ? "bg-white dark:bg-neutral-700 shadow-sm text-blue-600" 
+                          : "text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300"
+                      )}
+                    >
+                      Upload MP4/Video
+                    </button>
+                  </div>
+
                   <div className="grid grid-cols-1 gap-6">
                     <div>
-                      <label className="block text-sm font-bold text-neutral-700 dark:text-neutral-300 mb-2">YouTube Video ID or URL</label>
+                      <label className="block text-sm font-bold text-neutral-700 dark:text-neutral-300 mb-2">Video Title</label>
                       <input
                         type="text"
                         required
-                        value={videoForm.youtubeId}
-                        onChange={(e) => setVideoForm({ ...videoForm, youtubeId: extractYoutubeId(e.target.value) })}
+                        value={videoForm.title}
+                        onChange={(e) => setVideoForm({ ...videoForm, title: e.target.value })}
                         className="w-full px-4 py-3 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="e.g. dQw4w9WgXcQ or full URL"
+                        placeholder="e.g. Introduction to Cell Biology"
                       />
                     </div>
+
+                    {videoForm.videoType === 'youtube' ? (
+                      <div>
+                        <label className="block text-sm font-bold text-neutral-700 dark:text-neutral-300 mb-2">YouTube Video ID or URL</label>
+                        <input
+                          type="text"
+                          required
+                          value={videoForm.youtubeId}
+                          onChange={(e) => setVideoForm({ ...videoForm, youtubeId: e.target.value })}
+                          className="w-full px-4 py-3 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="e.g. dQw4w9WgXcQ or full URL"
+                        />
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <FileUpload 
+                          label="Step 1: Upload Video File (MP4/MOV)"
+                          accept="video/*"
+                          folder="videos"
+                          onUploadComplete={(url) => setVideoForm(prev => ({ ...prev, videoUrl: url }))}
+                        />
+                        <FileUpload 
+                          label="Step 2: Upload Thumbnail Image (Optional)"
+                          accept="image/*"
+                          folder="thumbnails"
+                          onUploadComplete={(url) => setVideoForm(prev => ({ ...prev, thumbnail: url }))}
+                        />
+                      </div>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -1504,7 +1641,7 @@ export default function AdminPanel() {
                           accept="image/*"
                           folder="payments"
                           useBase64={true}
-                          onUploadComplete={(url) => setVideoForm({ ...videoForm, qrCodeUrl: url })}
+                          onUploadComplete={(url) => setVideoForm(prev => ({ ...prev, qrCodeUrl: url }))}
                         />
                         {videoForm.qrCodeUrl && (
                           <div className="mt-2 p-2 bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 w-fit">
@@ -1589,7 +1726,7 @@ export default function AdminPanel() {
                           accept="image/*"
                           folder="payments"
                           useBase64={true}
-                          onUploadComplete={(url) => setNoteForm({ ...noteForm, qrCodeUrl: url })}
+                          onUploadComplete={(url) => setNoteForm(prev => ({ ...prev, qrCodeUrl: url }))}
                         />
                         {noteForm.qrCodeUrl && (
                           <div className="mt-2 p-2 bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 w-fit">
@@ -1623,10 +1760,9 @@ export default function AdminPanel() {
                   
                   <FileUpload 
                     label="Upload PDF Note (Optional)"
-                    accept=".pdf"
+                    accept="application/pdf"
                     folder="notes"
-                    useBase64={true}
-                    onUploadComplete={(url) => setNoteForm({ ...noteForm, pdfUrl: url })}
+                    onUploadComplete={(url) => setNoteForm(prev => ({ ...prev, pdfUrl: url }))}
                   />
                   <p className="text-[10px] text-neutral-500 mt-1">Note: PDF must be under 1MB for direct upload. For larger files, use a URL.</p>
                   
@@ -1718,7 +1854,7 @@ export default function AdminPanel() {
                           accept="image/*"
                           folder="payments"
                           useBase64={true}
-                          onUploadComplete={(url) => setLiveForm({ ...liveForm, qrCodeUrl: url })}
+                          onUploadComplete={(url) => setLiveForm(prev => ({ ...prev, qrCodeUrl: url }))}
                         />
                         {liveForm.qrCodeUrl && (
                           <div className="mt-2 p-2 bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 w-fit">
@@ -1835,7 +1971,7 @@ export default function AdminPanel() {
                             accept="image/*"
                             folder="payments"
                             useBase64={true}
-                            onUploadComplete={(url) => setMockTestForm({ ...mockTestForm, qrCodeUrl: url })}
+                            onUploadComplete={(url) => setMockTestForm(prev => ({ ...prev, qrCodeUrl: url }))}
                           />
                           {mockTestForm.qrCodeUrl && (
                             <div className="mt-2 p-2 bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 w-fit">
@@ -2325,14 +2461,19 @@ export default function AdminPanel() {
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
-                            <h3 className="text-sm font-bold text-neutral-900 dark:text-white truncate">{activeTab === 'video' ? item.youtubeId : item.title}</h3>
+                            <h3 className="text-sm font-bold text-neutral-900 dark:text-white truncate">{activeTab === 'video' ? (item.title || 'Untitled Video') : item.title}</h3>
                             {item.hidden && (
                               <span className="px-1.5 py-0.5 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 text-[10px] font-bold rounded uppercase tracking-wider">Hidden</span>
                             )}
                           </div>
                           <p className="text-xs text-neutral-500 mt-1">
-                            {activeTab === 'video' ? item.subject : activeTab === 'note' ? item.subject : activeTab === 'live' ? item.status : `${item.questions?.length || 0} Questions`}
+                            {activeTab === 'video' || activeTab === 'note' ? item.subject : activeTab === 'live' ? item.status : `${item.questions?.length || 0} Questions`}
                           </p>
+                          {(activeTab === 'video' || activeTab === 'note') && (
+                            <div className="mt-2 inline-block px-2 py-0.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-[10px] font-black rounded uppercase tracking-widest border border-blue-100 dark:border-blue-900/20">
+                              Chapter: {item.chapter || 'Not Specified'}
+                            </div>
+                          )}
                         </div>
                         <div className="flex items-center gap-1">
                           <button 

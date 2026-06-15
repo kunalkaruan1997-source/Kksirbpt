@@ -18,8 +18,6 @@ import Contact from './components/Contact';
 import ProfileSetup from './components/ProfileSetup';
 import WelcomeOverlay from './components/WelcomeOverlay';
 import PermissionSection from './components/PermissionSection';
-import PWAInstallPrompt from './components/PWAInstallPrompt';
-
 import AuthAction from './components/AuthAction';
 
 function PrivateRoute({ children, adminOnly = false }: { children: React.ReactNode, adminOnly?: boolean }) {

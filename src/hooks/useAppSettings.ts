@@ -16,7 +16,7 @@ export function useAppSettings() {
 
         // Real-time identity updates
         const appName = data.appName || 'KK Sir bpt';
-        const appIcon = data.appIcon || 'https://img.icons8.com/fluency/512/000000/education.png';
+        const appIcon = data.appIcon || 'https://cdn-icons-png.flaticon.com/512/2232/2232688.png';
 
         // Update document title
         document.title = appName;
@@ -28,9 +28,14 @@ export function useAppSettings() {
         // Update apple touch icon
         const appleIcon = document.querySelector('link[rel="apple-touch-icon"]') as HTMLLinkElement;
         if (appleIcon) appleIcon.href = appIcon;
+      } else {
+        // Fallback for document title if settings don't exist yet
+        document.title = 'KK Sir bpt';
       }
     }, (error) => {
       console.error('Error fetching contact settings:', error);
+      // Ensure we have a title even on error
+      document.title = 'KK Sir bpt';
     });
 
     const unsubscribeMonetization = onSnapshot(doc(db, 'settings', 'monetization'), (doc) => {

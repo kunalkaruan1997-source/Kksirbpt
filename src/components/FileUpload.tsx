@@ -14,7 +14,7 @@ interface FileUploadProps {
 }
 
 export default function FileUpload({ onUploadComplete, accept, label, folder, useBase64 = false }: FileUploadProps) {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   const [file, setFile] = useState<File | null>(null);
   const [progress, setProgress] = useState(0);
   const [uploading, setUploading] = useState(false);
@@ -25,6 +25,12 @@ export default function FileUpload({ onUploadComplete, accept, label, folder, us
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const selectedFile = e.target.files[0];
+      
+      if (loading) {
+        toast.info('Please wait for auth to initialize...');
+        return;
+      }
+      
       console.log('File selected:', {
         name: selectedFile.name,
         size: `${(selectedFile.size / 1024).toFixed(2)} KB`,
@@ -125,9 +131,10 @@ export default function FileUpload({ onUploadComplete, accept, label, folder, us
     try {
       // Include userId in path for better security rules compatibility
       const path = `${folder}/${user.uid}/${Date.now()}_${fileToUpload.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
-      console.log('Starting upload to path:', path);
+      console.log('Starting upload to path:', path, 'in bucket:', storage.app.options.storageBucket);
       
       const storageRef = ref(storage, path);
+      // Increased timeout/resumable handling for videos
       const uploadTask = uploadBytesResumable(storageRef, fileToUpload);
 
       uploadTask.on(
@@ -138,30 +145,37 @@ export default function FileUpload({ onUploadComplete, accept, label, folder, us
           console.log(`Upload progress: ${progress.toFixed(2)}%`);
         },
         (err) => {
-          console.error('Storage upload error:', err);
+          console.error('Storage upload error details:', {
+            code: err.code,
+            message: err.message,
+            customData: err.customData,
+            name: err.name
+          });
           
           // Check for specific error codes
           let msg = 'Upload failed: ' + err.message;
           if (err.code === 'storage/unauthorized') {
-            msg = 'Permission denied. Please check your account or try again.';
+            msg = 'Permission denied. Please ensure Firebase Storage is enabled in your console and Security Rules are deployed.';
           } else if (err.code === 'storage/quota-exceeded') {
-            msg = 'Storage quota exceeded. Please contact support.';
-          } else if (err.code === 'storage/canceled') {
-            msg = 'Upload canceled.';
+            msg = 'Storage quota exceeded. Please check your Firebase plan.';
+          } else if (err.code === 'storage/object-not-found') {
+            msg = 'Bucket not found. Please ensure Firebase Storage is initialized in your console.';
+          } else if (err.code === 'storage/retry-limit-exceeded') {
+            msg = 'Upload timed out. Please check your internet connection.';
           }
 
-          // If storage fails, try base64 as fallback for small images or PDFs
-          const isSupportedFallback = (fileToUpload.type.startsWith('image/') || fileToUpload.type === 'application/pdf');
+          // If storage fails, try base64 as fallback for small images or PDFs only
+          const isSupportedFallback = (fileToUpload.type.startsWith('image/') || fileToUpload.type === 'application/pdf') && !fileToUpload.type.startsWith('video/');
           if (isSupportedFallback && fileToUpload.size < 800 * 1024) {
-            setError('Storage upload failed. Attempting local upload fallback...');
-            toast.info('Storage failed, using local fallback...');
+            setError('Cloud storage upload failed. Using local fallback (Base64)...');
+            toast.info('Cloud storage failed, using local fallback...');
             processBase64(fileToUpload);
           } else {
-            const finalMsg = fileToUpload.size >= 800 * 1024 
-              ? `${msg} (File too large for fallback. Please use a smaller image < 800KB).`
+            const finalMsg = fileToUpload.size >= 800 * 1024 && !fileToUpload.type.startsWith('video/')
+              ? `${msg} (File too large for Base64 fallback).`
               : msg;
             setError(finalMsg);
-            toast.error(finalMsg);
+            toast.error(finalMsg, { duration: 10000 });
             setUploading(false);
           }
         },
@@ -213,8 +227,10 @@ export default function FileUpload({ onUploadComplete, accept, label, folder, us
             <Upload className="w-6 h-6 text-blue-600" />
           </div>
           <div className="text-center">
-            <p className="text-sm font-bold text-neutral-700 dark:text-neutral-300">Click to upload screenshot</p>
-            <p className="text-[10px] text-neutral-500 mt-1">JPG, PNG or WEBP (Max 2MB)</p>
+            <p className="text-sm font-bold text-neutral-700 dark:text-neutral-300">Click to upload file</p>
+            <p className="text-[10px] text-neutral-500 mt-1">
+              {accept.includes('video') ? 'MP4, MOV or WEBM' : 'JPG, PNG, PDF or WEBP'}
+            </p>
           </div>
           <button 
             type="button"
@@ -268,7 +284,7 @@ export default function FileUpload({ onUploadComplete, accept, label, folder, us
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-bold text-green-700 dark:text-green-400 truncate">Upload Complete</p>
-            <p className="text-xs text-green-600/70 dark:text-green-400/70 truncate">{uploadedUrl}</p>
+            <p className="text-xs text-green-600/70 dark:text-green-400/70 truncate">File is ready to use</p>
           </div>
           <button 
             onClick={clearFile}

@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react';
 import { Sparkles, X } from 'lucide-react';
 import { useAppSettings } from '../hooks/useAppSettings';
 
+import AppLogo from './AppLogo';
+
 export default function WelcomeOverlay({ onComplete }: { onComplete?: () => void }) {
   const { settings } = useAppSettings();
   const [isVisible, setIsVisible] = useState(() => {
@@ -117,13 +119,9 @@ export default function WelcomeOverlay({ onComplete }: { onComplete?: () => void
                 animate={{ rotate: 0, scale: 1 }}
                 transition={{ type: "spring", delay: 0.1, bounce: 0.4 }}
                 style={{ willChange: 'transform' }}
-                className="w-24 h-24 bg-blue-600 rounded-3xl flex items-center justify-center text-white mb-10 shadow-2xl shadow-blue-500/20 overflow-hidden"
+                className="w-32 h-32 bg-white rounded-[2.5rem] flex items-center justify-center mb-10 shadow-2xl shadow-blue-500/20 overflow-hidden border border-neutral-100"
               >
-                {settings?.appIcon ? (
-                  <img src={settings.appIcon} alt="Logo" className="w-full h-full object-cover" />
-                ) : (
-                  <Sparkles className="w-12 h-12 animate-pulse" />
-                )}
+                <AppLogo size={80} />
               </motion.div>
 
               {/* Line 1: Welcome to */}

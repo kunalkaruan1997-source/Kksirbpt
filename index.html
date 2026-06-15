@@ -3,72 +3,31 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>KK Sir bpt - Modern Learning Platform</title>
-    <link rel="icon" id="favicon" href="/favicon.ico" />
-    <link rel="icon" sizes="192x192" href="/icon-192.png">
-    <link rel="icon" sizes="512x512" href="/icon-512.png">
-    <link rel="manifest" id="manifest-link" href="/manifest.json" crossorigin="anonymous" />
-    <meta name="theme-color" content="#2563eb" />
+    <meta name="description" content="Access live sessions, recorded educational videos, comprehensive study materials, and rigorous mock tests for academic excellence with KK Sir BPT. Modern learning platform for competitive excellence." />
+    <title>KK Sir BPT</title>
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://ais-pre-2levp3steimmebovvc2cuf-781183105407.asia-southeast1.run.app/">
+    <meta property="og:title" content="KK Sir BPT">
+    <meta property="og:description" content="Access live sessions, recorded educational videos, comprehensive study materials, and rigorous mock tests for academic excellence.">
+    <meta property="og:image" content="https://images.unsplash.com/photo-1546410531-bb4caa6b424d?w=512&h=512&fit=crop&q=80&fm=png">
+    <link rel="icon" href="https://images.unsplash.com/photo-1546410531-bb4caa6b424d?w=32&h=32&fit=crop&q=80&fm=png" />
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://ais-pre-2levp3steimmebovvc2cuf-781183105407.asia-southeast1.run.app/">
+    <meta property="twitter:title" content="KK Sir BPT">
+    <meta property="twitter:description" content="Access live sessions, recorded educational videos, comprehensive study materials, and rigorous mock tests for academic excellence.">
+    <meta property="twitter:image" content="https://images.unsplash.com/photo-1546410531-bb4caa6b424d?w=512&h=512&fit=crop&q=80&fm=png">
+    
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#00215E" />
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="KK Sir bpt">
-    <meta name="mobile-web-app-capable" content="yes">
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <link rel="apple-touch-icon" sizes="152x152" href="/apple-touch-icon.png">
-    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
-    <link rel="apple-touch-icon" sizes="167x167" href="/apple-touch-icon.png">
-    <script>
-      // Dynamically update app icon and title from Firestore settings
-      async function updateAppIdentity() {
-        console.log('PWA: Starting identity update...');
-        try {
-          const timestamp = Date.now();
-          const response = await fetch('/api/app-settings?t=' + timestamp);
-          const settings = await response.json();
-          console.log('PWA: Fetched settings:', settings);
-          
-          if (settings.appName) {
-            document.title = settings.appName;
-            
-            // Update apple title
-            const appleTitle = document.querySelector('meta[name="apple-mobile-web-app-title"]');
-            if (appleTitle) appleTitle.content = settings.appName;
-            
-            // Force reload manifest/icons if they changed (optional, but helps with PWA update)
-            console.log('PWA: App name updated to:', settings.appName);
-          }
-        } catch (e) {
-          console.error('PWA: Failed to update app identity:', e);
-        }
-      }
-      updateAppIdentity();
-    </script>
-    <script>
-      // Global PWA Install Handler
-      window.deferredPrompt = null;
-      window.addEventListener('beforeinstallprompt', (e) => {
-        e.preventDefault();
-        window.deferredPrompt = e;
-        // Dispatch custom event to notify React
-        window.dispatchEvent(new CustomEvent('pwa-prompt-available'));
-      });
-    </script>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js')
-            .then(registration => {
-              console.log('SW registered: ', registration);
-            })
-            .catch(registrationError => {
-              console.log('SW registration failed: ', registrationError);
-            });
-        });
-      }
-    </script>
   </body>
 </html>

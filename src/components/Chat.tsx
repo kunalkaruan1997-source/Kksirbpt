@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { collection, query, orderBy, onSnapshot, addDoc, limit, doc, setDoc, getDoc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { db, storage, handleFirestoreError, OperationType } from '../lib/firebase';
 import { ChatMessage } from '../types';
 import { useAuth } from '../hooks/useAuth';
@@ -17,6 +17,7 @@ export default function Chat() {
   const [newMessage, setNewMessage] = useState('');
   const [chatEnabled, setChatEnabled] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -149,6 +150,7 @@ export default function Chat() {
     }
 
     setIsUploading(true);
+    setUploadProgress(0);
     try {
       let attachment = null;
 
@@ -156,8 +158,24 @@ export default function Chat() {
         const fileToUpload = selectedFile;
         const fileName = selectedFile.name;
         const fileRef = ref(storage, `chat_attachments/${Date.now()}_${fileName}`);
-        await uploadBytes(fileRef, fileToUpload);
-        const url = await getDownloadURL(fileRef);
+        
+        const uploadTask = uploadBytesResumable(fileRef, fileToUpload);
+        
+        const url = await new Promise<string>((resolve, reject) => {
+          uploadTask.on(
+            'state_changed',
+            (snapshot) => {
+              const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+              setUploadProgress(progress);
+            },
+            (error) => reject(error),
+            async () => {
+              const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+              resolve(downloadURL);
+            }
+          );
+        });
+
         attachment = {
           url,
           type: getFileType(fileToUpload),
@@ -710,9 +728,22 @@ export default function Chat() {
                 <button
                   type={newMessage.trim() || selectedFile || editingMessage ? "submit" : "button"}
                   disabled={!newMessage.trim() && !selectedFile && !editingMessage}
-                  className="w-12 h-12 rounded-full flex items-center justify-center shadow-lg transition-all bg-[#00a884] hover:bg-[#008f6f] text-white disabled:opacity-50 disabled:grayscale"
+                  className="w-12 h-12 rounded-full flex items-center justify-center shadow-lg transition-all bg-[#00a884] hover:bg-[#008f6f] text-white disabled:opacity-50 disabled:grayscale overflow-hidden relative"
                 >
-                  {isUploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+                  {isUploading ? (
+                    <div className="flex flex-col items-center justify-center">
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      {uploadProgress > 0 && (
+                        <span className="text-[8px] font-bold mt-0.5">{Math.round(uploadProgress)}%</span>
+                      )}
+                    </div>
+                  ) : <Send className="w-5 h-5" />}
+                  {isUploading && (
+                    <div 
+                      className="absolute bottom-0 left-0 h-1 bg-white/30 transition-all duration-300" 
+                      style={{ width: `${uploadProgress}%` }}
+                    />
+                  )}
                 </button>
               </form>
             </div>

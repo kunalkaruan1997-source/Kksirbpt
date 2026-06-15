@@ -24,7 +24,8 @@ export interface UserProfile {
 
 export interface Video {
   id: string;
-  youtubeId: string;
+  youtubeId?: string;
+  videoUrl?: string;
   title?: string;
   description?: string;
   category?: string;

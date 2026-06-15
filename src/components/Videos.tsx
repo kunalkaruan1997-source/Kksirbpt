@@ -78,7 +78,7 @@ export default function Videos() {
   const filteredVideos = videos.filter(v => {
     const matchesSearch = (v.title?.toLowerCase().includes(search.toLowerCase()) || false) || 
                          (v.description?.toLowerCase().includes(search.toLowerCase()) || false) ||
-                         v.youtubeId.toLowerCase().includes(search.toLowerCase());
+                         (v.youtubeId?.toLowerCase().includes(search.toLowerCase()) || false);
     const matchesClass = !selectedClass || (v.class || 'Other') === selectedClass;
     const matchesSubject = !selectedSubject || (v.subject || 'General') === selectedSubject;
     const matchesChapter = !selectedChapter || (v.chapter || 'Intro') === selectedChapter;
@@ -201,54 +201,56 @@ export default function Videos() {
         </AnimatePresence>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-5 gap-y-8">
         {filteredVideos.map((video) => (
           <motion.div
             key={video.id}
             layoutId={video.id}
-            whileHover={{ y: -4 }}
+            whileHover={{ y: -3 }}
             onClick={() => handleVideoSelect(video)}
-            className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden shadow-sm cursor-pointer group"
+            className="flex flex-col cursor-pointer group"
           >
-            <div className="relative aspect-video">
-              <img src={video.thumbnail} alt={video.youtubeId} className="w-full h-full object-cover" />
-              <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-lg">
+            {/* Thumbnail Box */}
+            <div className="relative aspect-video rounded-xl overflow-hidden bg-neutral-100 dark:bg-neutral-800 border border-neutral-200/60 dark:border-neutral-800 shadow-sm transition-shadow duration-300 group-hover:shadow-md">
+              <img src={video.thumbnail} alt={video.chapter || video.title || 'Video Thumbnail'} className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-550 ease-out" />
+              
+              {/* Hover Play Button Overlay */}
+              <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                <div className="w-12 h-12 bg-white/95 dark:bg-neutral-900/95 rounded-full flex items-center justify-center shadow-lg transform scale-90 group-hover:scale-100 transition-transform duration-200">
                   {video.isPremium && !isContentUnlocked(video.id) ? (
-                    <Lock className="w-6 h-6 text-amber-600" />
+                    <Lock className="w-5 h-5 text-amber-500 fill-amber-500/10" />
                   ) : (
-                    <Play className="w-6 h-6 text-blue-600 fill-blue-600" />
+                    <Play className="w-5 h-5 text-blue-600 fill-blue-600 ml-0.5" />
                   )}
                 </div>
               </div>
-              <div className="absolute top-2 left-2 flex flex-wrap gap-1">
+
+              {/* Badges Overlay */}
+              <div className="absolute top-2.5 left-2.5 flex flex-wrap gap-1.5 pointer-events-none">
                 {video.isPremium && (
-                  <span className="px-2 py-0.5 bg-amber-500 text-white text-[8px] font-bold rounded uppercase tracking-wider flex items-center gap-1 shadow-sm">
-                    <DollarSign className="w-2.5 h-2.5" />
+                  <span className="px-2 py-0.5 bg-amber-500 text-white text-[9px] font-black rounded-md uppercase tracking-wider flex items-center gap-1 shadow-md">
+                    <Lock className="w-2.5 h-2.5" />
                     {video.price && video.price > 0 ? `₹${video.price}` : 'Premium'}
-                  </span>
-                )}
-                {video.class && (
-                  <span className="px-2 py-0.5 bg-blue-600 text-white text-[8px] font-bold rounded uppercase tracking-wider">
-                    {video.class}
-                  </span>
-                )}
-                {video.subject && (
-                  <span className="px-2 py-0.5 bg-neutral-900 text-white text-[8px] font-bold rounded uppercase tracking-wider">
-                    {video.subject}
                   </span>
                 )}
               </div>
             </div>
-            <div className="p-4">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-tighter">
-                  {video.chapter || 'Intro'}
-                </span>
-              </div>
-              <h3 className="font-bold text-neutral-900 dark:text-white line-clamp-2 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                Video ID: {video.youtubeId}
+
+            {/* Title / Info Section - YouTube style */}
+            <div className="mt-2 text-left">
+              {/* Title */}
+              <h3 className="font-bold text-neutral-900 dark:text-neutral-100 line-clamp-2 leading-snug text-sm group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                {video.title || 'Untitled Video'}
               </h3>
+              
+              {/* Class, Subject, and Chapter info under title - Always visible YouTube metadata */}
+              <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 font-semibold flex items-center flex-wrap gap-1.5">
+                <span>{video.class || 'General'}</span>
+                <span className="text-neutral-300 dark:text-neutral-700 font-normal">•</span>
+                <span>{video.subject || 'Subject'}</span>
+                <span className="text-neutral-300 dark:text-neutral-700 font-normal">•</span>
+                <span className="truncate">Chapter: {video.chapter || 'Introduction'}</span>
+              </p>
             </div>
           </motion.div>
         ))}
@@ -450,28 +452,39 @@ export default function Videos() {
                 <X className="w-6 h-6" />
               </button>
               
-              <div className="aspect-video bg-black">
-                <YouTube
-                  videoId={extractYoutubeId(selectedVideo.youtubeId)}
-                  className="w-full h-full"
-                  opts={{
-                    width: '100%',
-                    height: '100%',
-                    playerVars: { 
-                      autoplay: 1,
-                      rel: 0,
-                      modestbranding: 1,
-                      iv_load_policy: 3,
-                      showinfo: 0,
-                      ec: 0,
-                      disablekb: 1
-                    },
-                  }}
-                />
+              <div className="aspect-video bg-black flex items-center justify-center">
+                {selectedVideo.videoUrl ? (
+                  <video 
+                    src={selectedVideo.videoUrl} 
+                    controls 
+                    autoPlay 
+                    className="w-full h-full"
+                    controlsList="nodownload"
+                    onContextMenu={(e) => e.preventDefault()}
+                  />
+                ) : (
+                  <YouTube
+                    videoId={extractYoutubeId(selectedVideo.youtubeId || '')}
+                    className="w-full h-full"
+                    opts={{
+                      width: '100%',
+                      height: '100%',
+                      playerVars: { 
+                        autoplay: 1,
+                        rel: 0,
+                        modestbranding: 1,
+                        iv_load_policy: 3,
+                        showinfo: 0,
+                        ec: 0,
+                        disablekb: 1
+                      },
+                    }}
+                  />
+                )}
               </div>
               
-              <div className="p-6 sm:p-8">
-                <div className="flex items-center justify-between gap-4">
+              <div className="p-6 sm:p-8 space-y-4">
+                <div className="flex items-center justify-between gap-4 flex-wrap">
                   <div className="flex items-center gap-2">
                     {selectedVideo.class && (
                       <span className="px-3 py-1 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-xs font-bold rounded-full uppercase">
@@ -484,10 +497,20 @@ export default function Videos() {
                       </span>
                     )}
                   </div>
-                  <span className="text-sm font-medium text-neutral-500">
-                    {selectedVideo.chapter || 'Intro'}
+                  <span className="px-3 py-1 bg-neutral-50 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 text-xs font-bold rounded-xl uppercase tracking-wider border border-neutral-100 dark:border-neutral-700">
+                    Chapter: {selectedVideo.chapter || 'Introduction'}
                   </span>
                 </div>
+
+                <h2 className="text-xl sm:text-2xl font-black text-neutral-900 dark:text-white uppercase tracking-tight leading-tight">
+                  {selectedVideo.title || 'Untitled Video'}
+                </h2>
+
+                {selectedVideo.description && (
+                  <p className="text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed mt-2 bg-neutral-50 dark:bg-neutral-900/50 p-4 rounded-2xl border border-neutral-100 dark:border-neutral-800">
+                    {selectedVideo.description}
+                  </p>
+                )}
               </div>
             </motion.div>
           </div>

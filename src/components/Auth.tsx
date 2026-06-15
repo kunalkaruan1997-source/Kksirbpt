@@ -8,6 +8,8 @@ import { motion } from 'motion/react';
 import { useAppSettings } from '../hooks/useAppSettings';
 import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 
+import AppLogo from './AppLogo';
+
 export default function Auth() {
   const [isLogin, setIsLogin] = useState(true);
   const [identifier, setIdentifier] = useState('');
@@ -147,10 +149,8 @@ export default function Auth() {
       >
         {/* Main Auth Box */}
         <div className="bg-white dark:bg-neutral-900 p-10 border border-neutral-200 dark:border-neutral-800 rounded-sm shadow-sm">
-          <div className="flex justify-center mb-10">
-            <h1 className="text-4xl font-bold italic tracking-tighter text-neutral-900 dark:text-white">
-              {settings?.appName || 'KK Sir bpt'}
-            </h1>
+          <div className="flex justify-center mb-8">
+            <AppLogo showText layout="vertical" size={60} />
           </div>
           
           {error && (

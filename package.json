@@ -1,10 +1,12 @@
 {
-  "name": "react-example",
+  "name": "kk-sir-bpt",
+  "description": "Access live sessions, recorded educational videos, comprehensive study materials, and rigorous mock tests for academic excellence. Modern learning platform for competitive excellence.",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
+    "start": "node server.ts",
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist",
@@ -24,6 +26,7 @@
     "firebase-admin": "^13.7.0",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
+    "qrcode.react": "^4.2.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-dropzone": "^15.0.0",
